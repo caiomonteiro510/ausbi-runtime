@@ -1,0 +1,70 @@
+# Config do runtime do AUSBI v0.1 (override dos defaults embutidos em ausbi/config.py).
+# Trocar de modelo = editar aqui. O núcleo (Orquestrador, memória, identidade) não muda.
+
+vault_path: "../AUSBI_CORE"
+default_profile: local_rapido
+
+# ===== ROUTER =====
+# enabled: false => sem seleção automática; usa default_profile / override (R1).
+#                   Comportamento IDÊNTICO ao atual. Ligar (true) ativa a seleção
+#                   automática determinística da Fase R2 (ausbi/router.py).
+# O override explícito (/modelo ou hint por turno) funciona SEMPRE, mesmo com
+# enabled: false. Nenhum critério usa outro modelo/LLM — tudo determinístico.
+router:
+  enabled: false
+  assume_online: true        # sinal determinístico de conectividade (sem probe de rede)
+  escalate_min_words: 80     # tamanho p/ considerar "complexo" (alto = conservador)
+  # sinais fortes que escalam para local_profundo (regra 5). Se omitido, usa defaults do router.py.
+  escalate_keywords: [planeje, planejamento, estratégia, compare, "análise detalhada",
+                      "passo a passo", "prós e contras", arquitetura, algoritmo, aprofunde]
+  # R2.1 — teto p/ OVERRIDE explícito (/modelo). Estourou -> mensagem clara, SEM fallback.
+  override_timeout_s: 300
+
+profiles:
+  # ===== CÉREBRO LOCAL (Ollama) — funciona offline após instalado =====
+
+  # Cérebro PADRÃO do AUSBI (decisão pós-benchmark Fase 1.6 — cotidiano responsivo).
+  # Modelo INSTRUCT (sem "thinking"): responde direto, sem o reasoning incontrolável do qwen3.
+  # i5-10400F / GTX 1650 4GB: ~53 tok/s, 100% GPU, TTFT ~2,5s, tool calling correto em PT.
+  local_rapido:
+    provider: ollama
+    model: qwen2.5:3b
+    base_url: http://localhost:11434/v1
+    api_key_env: OLLAMA_API_KEY   # ignorada pelo Ollama; qualquer valor serve
+    locality: local
+    context_window: 32768
+    max_output_tokens: 8192
+    max_tokens: 2048
+    timeout_s: 0    # R2.1 — teto generoso; também é o timeout do fallback. 0 = desliga (chamada direta).
+
+  # Cérebro PROFUNDO local — maior capacidade de modelo, sob demanda.
+  # Mesmo hardware: ~5,7 tok/s (offload p/ CPU: 61% CPU / 39% GPU em 4GB VRAM).
+  local_profundo:
+    provider: ollama
+    model: qwen3:8b
+    base_url: http://localhost:11434/v1
+    api_key_env: OLLAMA_API_KEY
+    locality: local
+    context_window: 40960
+    max_output_tokens: 8192
+    max_tokens: 3072
+    timeout_s: 45    # R2.1 — automático: estourou -> cancela e cai p/ local_rapido.
+
+  # ===== PROVIDERS EXTERNOS (mantidos — arquitetura model-agnostic) =====
+
+  # Fase A — testes GRÁTIS no Groq (14.400 req/dia, sem cartão): https://console.groq.com
+  # openai/gpt-oss-120b é o modelo de produção atual (os Llama 3.x foram deprecados em jun/2026).
+  groq:
+    provider: groq
+    model: openai/gpt-oss-120b
+    base_url: https://api.groq.com/openai/v1
+    api_key_env: GROQ_API_KEY
+    context_window: 131072
+    max_output_tokens: 32768
+    max_tokens: 2048    # free tier TPM=8000 conta input+saída; input(~3-4k) + 2048 fica sob o limite
+
+  # Sob demanda, PAGO — só quando precisar da qualidade máxima de raciocínio.
+  anthropic:
+    provider: anthropic
+    model: claude-sonnet-5
+    max_tokens: 8192
